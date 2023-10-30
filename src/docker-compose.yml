@@ -1,0 +1,355 @@
+version: '3.4'
+
+services:
+
+  seq:
+    image: datalust/seq:latest
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend    
+
+  sqldata:
+    image: mcr.microsoft.com/mssql/server:2019-latest 
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  nosqldata:
+    image: mongo
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend    
+
+  basketdata:
+    image: redis:alpine
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  identity-api:
+    image: ${REGISTRY:-eshop}/identity.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Identity/Identity.API/Dockerfile
+    depends_on:
+      - sqldata
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  basket-api:
+    image: ${REGISTRY:-eshop}/basket.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Basket/Basket.API/Dockerfile
+    depends_on:
+      - basketdata
+      - identity-api
+      - rabbitmq
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  catalog-api:
+    image: ${REGISTRY:-eshop}/catalog.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Catalog/Catalog.API/Dockerfile
+    depends_on:
+      - sqldata
+      - rabbitmq
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  ordering-api:
+    image: ${REGISTRY:-eshop}/ordering.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Ordering/Ordering.API/Dockerfile
+    depends_on:
+      - sqldata
+      - rabbitmq
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend      
+
+  ordering-backgroundtasks:
+    image: ${REGISTRY:-eshop}/ordering.backgroundtasks:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Ordering/Ordering.BackgroundTasks/Dockerfile
+    depends_on:
+      - sqldata
+      - rabbitmq
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend 
+      
+  payment-api:
+    image: ${REGISTRY:-eshop}/payment.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Payment/Payment.API/Dockerfile
+    depends_on:
+      - rabbitmq
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webhooks-api:
+    image: ${REGISTRY:-eshop}/webhooks.api:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Webhooks/Webhooks.API/Dockerfile
+    depends_on:
+      - sqldata
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend      
+
+  mobileshoppingagg:
+    image: ${REGISTRY:-eshop}/mobileshoppingagg:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: ApiGateways/Mobile.Bff.Shopping/aggregator/Dockerfile
+    depends_on:
+      - nosqldata
+      - sqldata
+      - identity-api
+      - rabbitmq
+      - ordering-api
+      - catalog-api
+      - basket-api
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webshoppingagg:
+    image: ${REGISTRY:-eshop}/webshoppingagg:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: ApiGateways/Web.Bff.Shopping/aggregator/Dockerfile
+    depends_on:
+      - nosqldata
+      - sqldata
+      - identity-api
+      - rabbitmq
+      - ordering-api
+      - catalog-api
+      - basket-api
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+
+  ordering-signalrhub:
+    image: ${REGISTRY:-eshop}/ordering.signalrhub:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Services/Ordering/Ordering.SignalrHub/Dockerfile
+    depends_on:
+      - nosqldata
+      - sqldata
+      - identity-api
+      - rabbitmq
+      - ordering-api
+      - catalog-api
+      - basket-api
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webstatus:
+    image: ${REGISTRY:-eshop}/webstatus:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Web/WebStatus/Dockerfile
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webspa:
+    image: ${REGISTRY:-eshop}/webspa:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Web/WebSPA/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:16-bullseye}
+    depends_on:
+      - webshoppingagg
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webmvc:
+    image: ${REGISTRY:-eshop}/webmvc:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Web/WebMVC/Dockerfile
+    depends_on:
+      - webshoppingagg
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+      
+  webhooks-client:
+    image: ${REGISTRY:-eshop}/webhooks.client:${PLATFORM:-linux}-${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Web/WebhookClient/Dockerfile
+    depends_on:
+      - webhooks-api
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - backend
+      - frontend
+
+  agent:
+    build:
+      context: .
+      dockerfile: ./agent/agent_dockerfile
+    container_name: honeypot_agent
+    restart: always
+    networks:
+      - elk
+    ports:
+      - '9090:9090'
+    depends_on:
+      - elasticsearch
+
+ 
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.7.0
+    networks:
+      - elk
+    depends_on:
+      - seq
+      - sqldata
+      - nosqldata
+      - basketdata
+      - rabbitmq
+      - identity-api
+      - basket-api
+      - catalog-api
+      - ordering-api
+      - ordering-backgroundtasks
+      - payment-api
+      - webhooks-api
+      - mobileshoppingagg
+      - webshoppingagg
+      - ordering-signalrhub
+      - webstatus
+      - webspa
+      - webmvc
+      - webhooks-client
+      
+    environment:
+      cluster.name: elk
+      network.host: 0.0.0.0
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.7.0
+    command: ["--strict.perms=false", "-c", "/usr/share/filebeat/filebeat.yml"]
+    volumes:
+      - ./suricata/logs:/var/log/suricata:ro
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    networks:
+      - elk
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m"
+    restart: always
+    depends_on:
+     
+      - suricata
+
+
+
+  suricata:
+    image: jasonish/suricata:latest
+    command: -i hp_core
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_NICE
+    volumes:
+      - ./suricata/logs:/var/log/suricata
+      - ./suricata/rules:/var/lib/suricata
+      - ./suricata/config:/etc/suricata
+    depends_on:
+      - elasticsearch
+
+
+networks:
+  frontend:
+    internal: false
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: hp_core
+  backend:
+    internal: true
+  elk:
